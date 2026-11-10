@@ -10,7 +10,7 @@ One loop, no framework (`src/agent.ts`). Per turn: build the prompt, call the mo
 
 **Memory is the transcript, read in full, not searched.** Each person has one append-only JSONL thread (`src/store.ts`). "What did I ask on 3 November?" is answered from the prompt with no tool call. Assistant turns also store which searches ran and which URLs came back, so a later turn knows what an answer rested on. When a thread outgrows its budget (`src/history.ts`), old answers are trimmed first, then the oldest turns are dropped but their dated questions stay in an index.
 
-**Staleness is a procedure.** For "is that still right" or "what changed since", the prompt requires: pull the claims that can change out of the original answer, check each current value, search with `since` set to the answer's date for news after it, and label every item changed, unchanged, or could not verify. "Unchanged" is allowed only for a subject searched in that turn. Search results carry published and retrieved dates, and the answer must cite them.
+**Staleness is a procedure.** For "is that still right" or "what changed since", the prompt requires: pull the claims that can change out of the original answer, check each current value, search with `since` set to the answer's date for news after it, and label every item changed, unchanged, or could not verify. "Unchanged" is allowed only for a subject searched in that turn. Search results carry published and retrieved dates, and the answer must cite them. One part is enforced in code: every search with `since` also runs the same query with no date filter, and the model gets both result sets. A re-check can no longer rest on news alone.
 
 **Speed.** No planner or router call before the main call, so a question that needs no search costs one model round trip. Searches in a round run concurrently. Identical searches inside ten minutes share one request, including in-flight ones. The provider call and the model call both retry transient errors.
 
@@ -27,12 +27,12 @@ One loop, no framework (`src/agent.ts`). Per turn: build the prompt, call the mo
 ## Limits
 
 - Coverage is enforced by the prompt, not by code. In testing, a weak model once reported a subject as unchanged without searching it, which prompted the "not checked" rule. A stronger model follows it better, but the guarantee is soft.
-- The `since` filter drops undated pages, so official pricing pages need a separate search without it. The prompt asks for both; models sometimes only do one.
+- Code guarantees the unfiltered companion for each dated search, but not that every subject was searched at all. A model can still skip a vendor; the prompt then requires the label "not checked".
 - I tested with free OpenRouter models, which are slow to a first token (17 to 45 seconds with reasoning models). Latency numbers from that setup are not a measure of the architecture.
 
 ## With another week
 
 1. An eval set: the three example questions plus variants, run against a fake clock and recorded search fixtures, scored on date resolution, search coverage and false "unchanged".
-2. Make coverage structural. Have the model list the subjects of a re-check in a tool argument, and check in code that each got a current-value search before the final call.
+2. Finish making coverage structural. Have the model list the subjects of a re-check in a tool argument, and check in code that each got a search before the final call.
 3. Summaries of old turns that keep dates, prices and URLs as structured fields.
 4. Per-session threads on top of the per-person one, and time zones taken from the client.

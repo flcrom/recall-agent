@@ -36,7 +36,9 @@ export function readConfig(env = process.env): Config {
 export function assertRunnable(c: Config): void {
   const missing: string[] = [];
   if (!c.tavilyKey) missing.push("TAVILY_API_KEY");
-  if (!c.llmApiKey && c.llmBaseUrl.startsWith("https://api.openai.com")) missing.push("LLM_API_KEY");
+  // Local servers such as Ollama need no key; every hosted provider does.
+  const local = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/.test(c.llmBaseUrl);
+  if (!c.llmApiKey && !local) missing.push("LLM_API_KEY");
   if (missing.length) {
     throw new Error(`Missing ${missing.join(", ")}. Copy .env.example to .env and fill it in.`);
   }

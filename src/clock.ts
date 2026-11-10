@@ -82,3 +82,8 @@ export function calendarBlock(now: Date, tz: string, daysBack = 28, daysAhead = 
   }
   return lines.join("\n");
 }
+
+/** Models sometimes copy the "[Tue 3 Nov 2026 19:45]" prefix into their reply. Remove it. */
+export function stripStamps(text: string): string {
+  return text.replace(/(^|\n)[ \t]*\[(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*,? [^\]\n]{3,40}\][ \t]*/g, "$1");
+}

@@ -44,9 +44,8 @@ test("parallel tool calls run concurrently and results reach the model", async (
   const events: AgentEvent[] = [];
   const answer = await agent.turn("t", "any changes?", (e) => events.push(e));
 
-  assert.deepEqual(started, ["hubspot", "pipedrive"]);
-  assert.equal(started.length, 2);
-  assert.equal(finished.length, 2);
+  assert.deepEqual(started, ["hubspot", "pipedrive", "pipedrive"]);
+  assert.equal(finished.length, 3);
   assert.equal(answer, "Both changed.");
   assert.deepEqual(events.filter((e) => e.type === "search").map((e) => (e as any).query), ["hubspot", "pipedrive"]);
 
@@ -56,8 +55,9 @@ test("parallel tool calls run concurrently and results reach the model", async (
 
   const saved = store.load("t");
   assert.equal(saved.length, 2);
-  assert.deepEqual(saved[1].searches?.map((s) => s.query), ["hubspot", "pipedrive"]);
+  assert.deepEqual(saved[1].searches?.map((s) => s.query), ["hubspot", "pipedrive", "pipedrive"]);
   assert.equal(saved[1].searches?.[1].since, "2026-11-03");
+  assert.equal(saved[1].searches?.[2].since, undefined);
 });
 
 test("concurrency: both searches start before either finishes", async () => {
@@ -135,4 +135,28 @@ test("a failed model call surfaces the error and leaves the user turn recorded",
   assert.deepEqual(store.load("t").map((t) => t.role), ["user"]);
   // The lock must not stay poisoned.
   await assert.rejects(agent.turn("t", "again", () => {}), /401/);
+});
+
+test("a dated search also runs an unfiltered one, and the model sees both", async () => {
+  const seen: Array<string | undefined> = [];
+  const search: SearchFn = async (a: SearchArgs) => {
+    seen.push(a.since);
+    return { hits: [{ title: "t", url: `https://x.com/${a.since ?? "now"}`, snippet: "s", published: null }] };
+  };
+  const { agent, requests } = setup(
+    [{ text: "", toolCalls: [call("1", { query: "neon pricing", since: "2026-11-03", topic: "news" })] }, { text: "ok", toolCalls: [] }],
+    search,
+  );
+  await agent.turn("t", "changed?", () => {});
+  assert.deepEqual(seen.sort(), ["2026-11-03", undefined]);
+  const tool = String((requests[1].messages.find((m) => m.role === "tool") as any).content);
+  assert.match(tool, /Published since 2026-11-03/);
+  assert.match(tool, /https:\/\/x\.com\/now/);
+});
+
+test("a copied date stamp is removed from the answer", async () => {
+  const { agent, store } = setup([{ text: "[Tue 10 Nov 2026 20:15] Yes.\nAll good.", toolCalls: [] }], async () => ({ hits: [] }));
+  const answer = await agent.turn("t", "hi", () => {});
+  assert.equal(answer, "Yes.\nAll good.");
+  assert.equal(store.load("t")[1].content, "Yes.\nAll good.");
 });

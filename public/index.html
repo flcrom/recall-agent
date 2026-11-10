@@ -61,6 +61,7 @@ form.addEventListener("submit", async (ev) => {
       const e = JSON.parse(line);
       if (e.type === "text") bot.textContent += e.text;
       else if (e.type === "search") status.textContent += (status.textContent ? "\n" : "") + "Searching: " + e.query;
+      else if (e.type === "done" && typeof e.answer === "string") bot.textContent = e.answer;
       else if (e.type === "error") bot.textContent += "\n[error] " + e.message;
       log.scrollTop = log.scrollHeight;
     }

@@ -1,4 +1,4 @@
-import { isoDay, stamp, type Clock } from "./clock.ts";
+import { isoDay, stamp, stripStamps, type Clock } from "./clock.ts";
 import { buildHistory } from "./history.ts";
 import type { ChatMessage, Llm, ToolSpec } from "./llm.ts";
 import { systemPrompt } from "./prompt.ts";
@@ -8,7 +8,7 @@ import type { SearchRecord, Store } from "./store.ts";
 export type AgentEvent =
   | { type: "text"; text: string }
   | { type: "search"; query: string; since?: string }
-  | { type: "done" };
+  | { type: "done"; answer: string };
 
 const SEARCH_TOOL: ToolSpec = {
   type: "function",
@@ -93,17 +93,28 @@ export class Agent {
           if (typeof parsed === "string") return { call, content: parsed };
           emit({ type: "search", query: parsed.query, since: parsed.since });
           const at = clock();
-          const outcome = await search(parsed);
-          records.push({ query: parsed.query, since: parsed.since, at: at.toISOString(), urls: outcome.hits.map((h) => h.url) });
-          return { call, content: renderOutcome(outcome, isoDay(at, tz)) };
+          const day = isoDay(at, tz);
+          const run = async (args: SearchArgs) => {
+            const outcome = await search(args);
+            records.push({ query: args.query, since: args.since, at: at.toISOString(), urls: outcome.hits.map((h) => h.url) });
+            return outcome;
+          };
+          if (!parsed.since) return { call, content: renderOutcome(await run(parsed), day) };
+          // A since filter drops undated pages such as pricing pages. Every dated search
+          // therefore also gets an unfiltered pass, so a re-check never rests on news alone.
+          const [dated, current] = await Promise.all([run(parsed), run({ ...parsed, since: undefined, topic: "general" })]);
+          const content =
+            `Published since ${parsed.since} (undated pages are excluded here):\n${renderOutcome(dated, day)}\n\n` +
+            `Current pages for the same query, no date filter (use these for present values):\n${renderOutcome(current, day)}`;
+          return { call, content };
         }),
       );
       for (const r of results) messages.push({ role: "tool", tool_call_id: r.call.id, content: r.content });
     }
 
-    answer = answer.trim() || "I could not produce an answer. Please try again.";
+    answer = stripStamps(answer).trim() || "I could not produce an answer. Please try again.";
     store.append(thread, { ts: clock().toISOString(), role: "assistant", content: answer, searches: records.length ? records : undefined });
-    emit({ type: "done" });
+    emit({ type: "done", answer });
     return answer;
   }
 }
