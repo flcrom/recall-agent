@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chat</title>
+<style>
+  :root { color-scheme: light dark; --line: #8884; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.5 system-ui, sans-serif; display: flex; flex-direction: column; height: 100dvh; }
+  #log { flex: 1; overflow-y: auto; padding: 1rem; max-width: 46rem; width: 100%; margin: 0 auto; }
+  .msg { white-space: pre-wrap; margin: 0 0 1rem; }
+  .user { font-weight: 600; }
+  .status { color: #888; font-size: 0.85rem; margin: -0.5rem 0 1rem; }
+  form { display: flex; gap: 0.5rem; padding: 0.75rem 1rem; border-top: 1px solid var(--line); max-width: 46rem; width: 100%; margin: 0 auto; }
+  input { flex: 1; font: inherit; padding: 0.6rem 0.75rem; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: inherit; }
+  button { font: inherit; padding: 0.6rem 1rem; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: inherit; cursor: pointer; }
+  a { color: inherit; }
+</style>
+</head>
+<body>
+<div id="log"></div>
+<form id="f"><input id="m" autocomplete="off" autofocus placeholder="Ask anything"><button>Send</button></form>
+<script>
+const log = document.getElementById("log"), form = document.getElementById("f"), input = document.getElementById("m");
+const thread = "default";
+
+function add(cls, text) {
+  const el = document.createElement("div");
+  el.className = "msg " + cls;
+  el.textContent = text;
+  log.appendChild(el);
+  log.scrollTop = log.scrollHeight;
+  return el;
+}
+
+fetch("/api/history?thread=" + thread).then(r => r.json()).then(turns => {
+  for (const t of turns) add(t.role === "user" ? "user" : "bot", t.content);
+});
+
+form.addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const message = input.value.trim();
+  if (!message) return;
+  input.value = "";
+  add("user", message);
+  const bot = add("bot", "");
+  const status = document.createElement("div");
+  status.className = "status";
+  log.insertBefore(status, bot);
+  const res = await fetch("/api/chat", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ message, thread }) });
+  const reader = res.body.getReader(), dec = new TextDecoder();
+  let buf = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let i;
+    while ((i = buf.indexOf("\n\n")) >= 0) {
+      const line = buf.slice(0, i).replace(/^data: /, ""); buf = buf.slice(i + 2);
+      const e = JSON.parse(line);
+      if (e.type === "text") bot.textContent += e.text;
+      else if (e.type === "search") status.textContent += (status.textContent ? "\n" : "") + "Searching: " + e.query;
+      else if (e.type === "error") bot.textContent += "\n[error] " + e.message;
+      log.scrollTop = log.scrollHeight;
+    }
+  }
+  if (!status.textContent) status.remove();
+});
+</script>
+</body>
+</html>

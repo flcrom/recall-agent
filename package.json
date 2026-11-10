@@ -1,0 +1,21 @@
+{
+  "name": "recall-chat-agent",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A chat agent with one tool (web search) that remembers what it told you and checks whether it is still true.",
+  "scripts": {
+    "dev": "tsx src/server.ts",
+    "chat": "tsx src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/*.test.ts"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}
