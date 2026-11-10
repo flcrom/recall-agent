@@ -7,7 +7,12 @@ import { Store } from "./store.ts";
 
 export function createAgent(env = process.env) {
   const config = readConfig(env);
-  assertRunnable(config);
+  try {
+    assertRunnable(config);
+  } catch (e) {
+    console.error(e instanceof Error ? e.message : e);
+    process.exit(1);
+  }
   const agent = new Agent({
     llm: openAiCompatible({ baseUrl: config.llmBaseUrl, apiKey: config.llmApiKey, model: config.llmModel }),
     search: cached(tavilySearch(config.tavilyKey)),
